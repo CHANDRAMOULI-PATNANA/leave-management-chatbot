@@ -1,29 +1,38 @@
-# Leave Request Chatbot (Mock-based)
+# 🏖️ Leave Management Chatbot
 
 **Proof-of-Concept** — Mock-based leave request chatbot for interns.
 
+---
+
 ## 🧠 Overview
-This CLI bot allows employees to:
+This bot allows employees to:
 - ✅ Apply for leave
 - ✅ Check leave balance
 - ✅ View upcoming leaves
 - ✅ Cancel leave requests
 
-**No real database** — uses mocked JSON data structure in-memory.
+**No real database** — Uses mocked JSON-like data persisted in session state.
 
 ---
 
 ## 🧑‍💻 Tech Stack
 - **Language:** Python 3.x
-- **Data Storage:** In-memory JSON-like dictionary
-- **Interface:** Command-line interface (CLI)
+- **UI Framework:** Streamlit (web-based UI)
+- **Data Storage:** In-memory (`st.session_state`)
+- **Deployment Ready:** Works locally and on Streamlit Cloud
 
 ---
 
-## 🚀 Usage
+## ✨ Features
+✅ **Persistent session data** — leave applications and balances persist until the app is stopped.  
+✅ **Simple UI** — select options like "Check Balance" or "Apply Leave".  
+✅ **Rule-Based** — keyword-driven logic, no NLP.
 
-1. Clone or download this repository.
-2. Make sure you have Python 3.x installed.
-3. Run:
-   ```bash
-   python leave_chatbot.py
+---
+
+## 🚀 Usage Instructions
+
+### 📂 1. Clone or Download
+```bash
+git clone https://github.com/YourUsername/leave-management-chatbot.git
+cd leave-management-chatbot
