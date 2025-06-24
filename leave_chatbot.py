@@ -1,7 +1,13 @@
 import streamlit as st
 from datetime import datetime
+import re
+import spacy
+import dateparser
 
-# Mock data (initialize only if not present in session)
+# Load spaCy model
+nlp = spacy.load("en_core_web_sm")
+
+# --- Mock Data Setup ---
 if "employees" not in st.session_state:
     st.session_state.employees = {
         "E001": {
@@ -10,10 +16,47 @@ if "employees" not in st.session_state:
             "applied_leaves": []
         }
     }
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
 employees = st.session_state.employees
 current_user_id = "E001"
 date_format = "%Y-%m-%d"
+
+def extract_dates_spacy(text):
+    # Use regex to find all date-like substrings
+    date_patterns = re.findall(r"\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}-\d{2}-\d{2}|[A-Za-z]{3,9} \d{1,2},? \d{4}", text)
+    dates = []
+    for d in date_patterns:
+        parsed = dateparser.parse(d)
+        if parsed:
+            dates.append(parsed.strftime("%Y-%m-%d"))
+    if len(dates) >= 2:
+        return dates[0], dates[1]
+    elif len(dates) == 1:
+        return dates[0], None
+    return None, None
+
+def detect_intent(text):
+    text_lower = text.lower()
+    if any(word in text_lower for word in ["balance", "how many leaves", "leaves left", "remaining leaves", "check", "status"]):
+        return "check_balance"
+    if any(word in text_lower for word in ["upcoming", "future", "next", "my leaves"]):
+        return "view_upcoming"
+    if any(word in text_lower for word in ["cancel", "delete", "remove"]):
+        return "cancel_leave"
+    if "leave" in text_lower and ("from" in text_lower or "to" in text_lower):
+        return "apply_leave"
+    if "apply" in text_lower and "leave" in text_lower:
+        return "apply_leave"
+    return "unknown"
+
+def extract_leave_type(text):
+    if "casual" in text.lower():
+        return "casual"
+    if "sick" in text.lower():
+        return "sick"
+    return None
 
 def check_leave_balance():
     balance = employees[current_user_id]["leave_balance"]
@@ -29,11 +72,13 @@ def view_upcoming_leaves():
             upcoming.append(
                 f"{leave['from']} to {leave['to']} for {leave['reason']}"
             )
-    return upcoming
+    if upcoming:
+        return "Your upcoming leaves:\n" + "\n".join(f"- {leave}" for leave in upcoming)
+    else:
+        return "No upcoming leaves."
 
 def apply_leave(from_date, to_date, reason, leave_type):
     balance = employees[current_user_id]["leave_balance"]
-    # Prevent duplicate leave for same date and type
     for leave in employees[current_user_id]["applied_leaves"]:
         if (
             leave["from"] == from_date
@@ -43,7 +88,6 @@ def apply_leave(from_date, to_date, reason, leave_type):
             return f"You have already applied for {leave_type} leave on {from_date}."
     if balance[leave_type] <= 0:
         return f"You don't have enough {leave_type} leaves."
-    # Save the leave
     employees[current_user_id]["applied_leaves"].append(
         {
             "from": from_date,
@@ -64,41 +108,110 @@ def cancel_leave(from_date):
             return f"Leave on {from_date} canceled successfully."
     return f"No leave found on {from_date}."
 
-# Streamlit UI
+def parse_command(user_input):
+    # Multi-turn: If waiting for a date for cancel
+    if st.session_state.get("awaiting_cancel_date"):
+        from_date, _ = extract_dates_spacy(user_input)
+        if from_date:
+            st.session_state.awaiting_cancel_date = False
+            return cancel_leave(from_date)
+        else:
+            return "Please specify the date of the leave you want to cancel (e.g. 2025-06-24)."
+
+    # Multi-turn: If waiting for reason or type for apply_leave (existing logic)
+    if "pending_apply" in st.session_state and st.session_state.pending_apply.get("step") == "reason":
+        st.session_state.pending_apply["reason"] = user_input
+        st.session_state.pending_apply["step"] = "type"
+        return "What type of leave? (casual/sick)"
+    if "pending_apply" in st.session_state and st.session_state.pending_apply.get("step") == "type":
+        leave_type = extract_leave_type(user_input)
+        if not leave_type:
+            return "Please enter a valid leave type: casual or sick."
+        data = st.session_state.pending_apply
+        response = apply_leave(
+            data["from_date"], data["to_date"], data["reason"], leave_type
+        )
+        del st.session_state.pending_apply
+        return response
+
+    # Detect intent
+    intent = detect_intent(user_input)
+    if intent == "check_balance":
+        return check_leave_balance()
+    if intent == "view_upcoming":
+        return view_upcoming_leaves()
+    if intent == "cancel_leave":
+        from_date, _ = extract_dates_spacy(user_input)
+        if from_date:
+            return cancel_leave(from_date)
+        else:
+            st.session_state.awaiting_cancel_date = True
+            return "Please specify the date of the leave you want to cancel (e.g. 2025-06-24)."
+    if intent == "apply_leave":
+        from_date, to_date = extract_dates_spacy(user_input)
+        leave_type = extract_leave_type(user_input)
+        if from_date and to_date and leave_type:
+            reason = user_input  # You can improve this with more NLP
+            return apply_leave(from_date, to_date, reason, leave_type)
+        elif from_date and to_date:
+            st.session_state.pending_apply = {
+                "from_date": from_date,
+                "to_date": to_date,
+                "step": "reason"
+            }
+            return "What is the reason for your leave?"
+        else:
+            # If user just says "I want to apply for leave", start the flow
+            st.session_state.awaiting_apply_dates = True
+            return "Please specify the leave dates (e.g. from 2025-06-24 to 2025-06-28)."
+
+    # Multi-turn: If waiting for dates for apply_leave
+    if st.session_state.get("awaiting_apply_dates"):
+        from_date, to_date = extract_dates_spacy(user_input)
+        if from_date and to_date:
+            st.session_state.pending_apply = {
+                "from_date": from_date,
+                "to_date": to_date,
+                "step": "reason"
+            }
+            st.session_state.awaiting_apply_dates = False
+            return "What is the reason for your leave?"
+        else:
+            return "Please specify both start and end dates (e.g. from 2025-06-24 to 2025-06-28)."
+
+    # Handle greetings and small talk
+    if any(word in user_input.lower() for word in ["thank", "thanks", "thank you"]):
+        return "You're welcome! 😊 Let me know if you need anything else."
+    if any(word in user_input.lower() for word in ["hello", "hi", "hey"]):
+        return "Hello! How can I assist you with your leaves today?"
+    if any(word in user_input.lower() for word in ["bye", "goodbye", "see you"]):
+        return "Goodbye! Have a great day!"
+
+    return (
+        "Sorry, I didn't understand that. "
+        "You can ask me to apply for leave, check your leave balance, view upcoming leaves, or cancel a leave."
+    )
+
+# --- Streamlit Chat UI ---
 st.title("🏖️ Leave Management Chatbot")
 
-action = st.selectbox(
-    "What would you like to do?",
-    ("Check Balance", "View Upcoming Leaves", "Apply Leave", "Cancel Leave"),
-)
+# Add greeting if chat is empty
+if not st.session_state.chat_history:
+    st.session_state.chat_history.append({
+        "role": "assistant",
+        "content": "Hello! 👋 I'm your Leave Management Assistant. You can ask me to apply for leave, check your leave balance, view upcoming leaves, or cancel a leave. How can I help you today?"
+    })
 
-if action == "Check Balance":
-    st.write(check_leave_balance())
-
-elif action == "View Upcoming Leaves":
-    upcoming = view_upcoming_leaves()
-    if upcoming:
-        st.write("Your upcoming leaves:")
-        for leave in upcoming:
-            st.write(f"- {leave}")
+for entry in st.session_state.chat_history:
+    if entry["role"] == "user":
+        st.chat_message("user").write(entry["content"])
     else:
-        st.info("No upcoming leaves.")
+        st.chat_message("assistant").write(entry["content"])
 
-elif action == "Apply Leave":
-    from_date = st.text_input("From Date (YYYY-MM-DD)")
-    to_date = st.text_input("To Date (YYYY-MM-DD)")
-    reason = st.text_input("Reason")
-    leave_type = st.selectbox("Type of leave", ("casual", "sick"))
-    if st.button("Apply"):
-        if from_date and to_date and reason:
-            st.success(apply_leave(from_date, to_date, reason, leave_type))
-        else:
-            st.warning("Please fill all the details.")
+user_input = st.chat_input("Type your message...")
 
-elif action == "Cancel Leave":
-    cancel_date = st.text_input("Enter the From-Date to cancel (YYYY-MM-DD)")
-    if st.button("Cancel"):
-        if cancel_date:
-            st.success(cancel_leave(cancel_date))
-        else:
-            st.warning("Please enter a date.")
+if user_input:
+    st.session_state.chat_history.append({"role": "user", "content": user_input})
+    response = parse_command(user_input)
+    st.session_state.chat_history.append({"role": "assistant", "content": response})
+    st.rerun()
