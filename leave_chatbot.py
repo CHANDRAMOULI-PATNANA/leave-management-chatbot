@@ -1,20 +1,7 @@
 import streamlit as st
 from datetime import datetime
 import re
-import spacy
-import subprocess
-import sys
 import dateparser
-
-# --- Ensure spaCy model is available ---
-def ensure_spacy_model():
-    try:
-        spacy.load("en_core_web_sm")
-    except OSError:
-        subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"], check=True)
-
-ensure_spacy_model()
-nlp = spacy.load("en_core_web_sm")
 
 # --- Mock Data Setup ---
 if "employees" not in st.session_state:
@@ -32,9 +19,12 @@ employees = st.session_state.employees
 current_user_id = "E001"
 date_format = "%Y-%m-%d"
 
-def extract_dates_spacy(text):
+def extract_dates(text):
     # Use regex to find all date-like substrings
-    date_patterns = re.findall(r"\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}-\d{2}-\d{2}|[A-Za-z]{3,9} \d{1,2},? \d{4}", text)
+    date_patterns = re.findall(
+        r"\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}-\d{2}-\d{2}|[A-Za-z]{3,9} \d{1,2},? \d{4}",
+        text,
+    )
     dates = []
     for d in date_patterns:
         parsed = dateparser.parse(d)
@@ -120,7 +110,7 @@ def cancel_leave(from_date):
 def parse_command(user_input):
     # Multi-turn: If waiting for a date for cancel
     if st.session_state.get("awaiting_cancel_date"):
-        from_date, _ = extract_dates_spacy(user_input)
+        from_date, _ = extract_dates(user_input)
         if from_date:
             st.session_state.awaiting_cancel_date = False
             return cancel_leave(from_date)
@@ -150,14 +140,14 @@ def parse_command(user_input):
     if intent == "view_upcoming":
         return view_upcoming_leaves()
     if intent == "cancel_leave":
-        from_date, _ = extract_dates_spacy(user_input)
+        from_date, _ = extract_dates(user_input)
         if from_date:
             return cancel_leave(from_date)
         else:
             st.session_state.awaiting_cancel_date = True
             return "Please specify the date of the leave you want to cancel (e.g. 2025-06-24)."
     if intent == "apply_leave":
-        from_date, to_date = extract_dates_spacy(user_input)
+        from_date, to_date = extract_dates(user_input)
         leave_type = extract_leave_type(user_input)
         if from_date and to_date and leave_type:
             reason = user_input  # You can improve this with more NLP
@@ -176,7 +166,7 @@ def parse_command(user_input):
 
     # Multi-turn: If waiting for dates for apply_leave
     if st.session_state.get("awaiting_apply_dates"):
-        from_date, to_date = extract_dates_spacy(user_input)
+        from_date, to_date = extract_dates(user_input)
         if from_date and to_date:
             st.session_state.pending_apply = {
                 "from_date": from_date,
