@@ -6,13 +6,14 @@ import subprocess
 import sys
 import dateparser
 
-# Ensure the spaCy model is downloaded at runtime
-try:
-    nlp = spacy.load("en_core_web_sm")
-except OSError:
-    subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
-    nlp = spacy.load("en_core_web_sm")
-# Load spaCy model
+# --- Ensure spaCy model is available ---
+def ensure_spacy_model():
+    try:
+        spacy.load("en_core_web_sm")
+    except OSError:
+        subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"], check=True)
+
+ensure_spacy_model()
 nlp = spacy.load("en_core_web_sm")
 
 # --- Mock Data Setup ---
