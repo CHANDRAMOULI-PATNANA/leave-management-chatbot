@@ -20,12 +20,14 @@ current_user_id = "E001"
 date_format = "%Y-%m-%d"
 
 def extract_dates(text):
-    # Match dates with or without year, e.g. July-5, 5-July, July 5, 5 July, July-5-2025, etc.
+    # Match a wide variety of date formats, with or without year
     date_patterns = re.findall(
-        r"\d{1,2}[-/ ](?:[A-Za-z]{3,9})[-/ ]?\d{0,4}|"
-        r"(?:[A-Za-z]{3,9})[-/ ]\d{1,2}[-/ ]?\d{0,4}|"
-        r"\d{4}-\d{2}-\d{2}|"
-        r"[A-Za-z]{3,9} \d{1,2},? \d{4}",
+        r"\d{1,2}[-/ ](?:[A-Za-z]{3,9})[-/ ]?\d{0,4}|"         # 10-July, 10-July-2025
+        r"(?:[A-Za-z]{3,9})[-/ ]\d{1,2}[-/ ]?\d{0,4}|"         # July-10, July-10-2025
+        r"\d{4}-\d{2}-\d{2}|"                                  # 2025-07-10
+        r"[A-Za-z]{3,9} \d{1,2},? \d{4}|"                      # July 10, 2025
+        r"\d{1,2}[a-z]{2} [A-Za-z]{3,9}|"                      # 5th July
+        r"[A-Za-z]{3,9} \d{1,2}",                              # July 5
         text,
     )
     dates = []
@@ -39,21 +41,26 @@ def extract_dates(text):
     if len(dates) >= 2:
         return dates[0], dates[1]
     elif len(dates) == 1:
-        return dates[0], None
+        return dates[0], dates[0]  # treat as single-day leave
     return None, None
 
 def detect_intent(text):
     text_lower = text.lower()
+    # If message contains a date and "apply" or "leave", treat as apply_leave
+    if re.search(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|\d{1,2})", text_lower) and (
+        "apply" in text_lower or "leave" in text_lower
+    ):
+        return "apply_leave"
+    if text_lower.strip() == "check":
+        return "check_balance"
+    if text_lower.strip() == "upcoming":
+        return "view_upcoming"
     if any(word in text_lower for word in ["balance", "how many leaves", "leaves left", "remaining leaves", "check", "status"]):
         return "check_balance"
     if any(word in text_lower for word in ["upcoming", "future", "next", "my leaves"]):
         return "view_upcoming"
     if any(word in text_lower for word in ["cancel", "delete", "remove"]):
         return "cancel_leave"
-    if "leave" in text_lower and ("from" in text_lower or "to" in text_lower):
-        return "apply_leave"
-    if "apply" in text_lower and "leave" in text_lower:
-        return "apply_leave"
     return "unknown"
 
 def extract_leave_type(text):
