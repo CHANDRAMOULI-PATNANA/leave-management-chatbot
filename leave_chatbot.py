@@ -45,6 +45,14 @@ def view_upcoming_leaves():
 
 def apply_leave(from_date, to_date, reason, leave_type):
     balance = employees[current_user_id]["leave_balance"]
+    # Prevent duplicate leave for same date and type
+    for leave in employees[current_user_id]["applied_leaves"]:
+        if (
+            leave["from"] == from_date
+            and leave["type"] == leave_type
+            and leave["status"] == "approved"
+        ):
+            return f"You have already applied for {leave_type} leave on {from_date}."
     if balance[leave_type] <= 0:
         return f"You don't have enough {leave_type} leaves."
     # Save the leave
@@ -59,7 +67,6 @@ def apply_leave(from_date, to_date, reason, leave_type):
     )
     balance[leave_type] -= 1
     return f"Leave applied from {from_date} to {to_date} for {reason}."
-
 
 def cancel_leave(from_date):
     for leave in employees[current_user_id]["applied_leaves"]:
