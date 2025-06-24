@@ -20,15 +20,21 @@ current_user_id = "E001"
 date_format = "%Y-%m-%d"
 
 def extract_dates(text):
-    # Use regex to find all date-like substrings
+    # Match dates with or without year, e.g. July-5, 5-July, July 5, 5 July, July-5-2025, etc.
     date_patterns = re.findall(
-        r"\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}-\d{2}-\d{2}|[A-Za-z]{3,9} \d{1,2},? \d{4}",
+        r"\d{1,2}[-/ ](?:[A-Za-z]{3,9})[-/ ]?\d{0,4}|"
+        r"(?:[A-Za-z]{3,9})[-/ ]\d{1,2}[-/ ]?\d{0,4}|"
+        r"\d{4}-\d{2}-\d{2}|"
+        r"[A-Za-z]{3,9} \d{1,2},? \d{4}",
         text,
     )
     dates = []
     for d in date_patterns:
         parsed = dateparser.parse(d)
         if parsed:
+            # If year is missing, assume current year
+            if parsed.year == 1900:
+                parsed = parsed.replace(year=datetime.now().year)
             dates.append(parsed.strftime("%Y-%m-%d"))
     if len(dates) >= 2:
         return dates[0], dates[1]
