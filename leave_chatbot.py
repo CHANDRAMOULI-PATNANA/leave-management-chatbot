@@ -1,47 +1,35 @@
-import json
 import streamlit as st
 from datetime import datetime
-# Mock data
+
+# Mock data (initialize only if not present in session)
 if "employees" not in st.session_state:
     st.session_state.employees = {
         "E001": {
             "name": "John Doe",
             "leave_balance": {"casual": 5, "sick": 2},
-            "applied_leaves": [
-                {
-                    "from": "2025-07-05",
-                    "to": "2025-07-07",
-                    "type": "casual",
-                    "reason": "Vacation",
-                    "status": "approved",
-                }
-                ],
-                }
-                }
+            "applied_leaves": []
+        }
+    }
+
 employees = st.session_state.employees
 current_user_id = "E001"
 date_format = "%Y-%m-%d"
-
 
 def check_leave_balance():
     balance = employees[current_user_id]["leave_balance"]
     return f"You have {balance['casual']} casual and {balance['sick']} sick leaves remaining."
 
-
 def view_upcoming_leaves():
     leaves = employees[current_user_id]["applied_leaves"]
     upcoming = []
     today = datetime.now().date()
-
     for leave in leaves:
         leave_start = datetime.strptime(leave["from"], date_format).date()
         if leave_start >= today and leave["status"] == "approved":
             upcoming.append(
                 f"{leave['from']} to {leave['to']} for {leave['reason']}"
             )
-
     return upcoming
-
 
 def apply_leave(from_date, to_date, reason, leave_type):
     balance = employees[current_user_id]["leave_balance"]
@@ -76,7 +64,7 @@ def cancel_leave(from_date):
             return f"Leave on {from_date} canceled successfully."
     return f"No leave found on {from_date}."
 
-# 🎨 Streamlit UI
+# Streamlit UI
 st.title("🏖️ Leave Management Chatbot")
 
 action = st.selectbox(
